@@ -39,20 +39,17 @@ class Router(object):
 
     def make(self, name, params={}):
         try:
+            route = self.routes[name]
             parts = urlparse(self.host)
-            return uritemplate.expand("{proto}://{host}{+path}", {"proto": parts.scheme, "host": parts.netloc,
-                                                                  "path": self.routes[name].template(params)})
+            return uritemplate.expand("{proto}://{host}{+path}", dict(proto=parts.scheme, host=parts.netloc,
+                                                                      path=route.template(params)))
         except KeyError:
             return None
 
     def run(self, path):
-        # try:
-            parts = urlparse(path)
-            for name, route in self.routes.iteritems():
-                route.execute(parts)
-        # except Exception as e:
-        #     print "exception: %s, path:%s, router: %s" % (e, path, self.host)
-        #     raise e
+        parts = urlparse(path)
+        for name, route in self.routes.iteritems():
+            route.execute(parts)
 
 
 def expander(template):

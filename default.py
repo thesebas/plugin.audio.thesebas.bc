@@ -42,6 +42,8 @@ class PluginHelper(object):
     def listingAction(self, func):
         def inner(*args):
             items = func(*args)
+            if items is None:
+                print args
             xbmcplugin.addDirectoryItems(self.handle, items)
             xbmcplugin.endOfDirectory(self.handle)
 
@@ -57,8 +59,8 @@ def album_to_listitem(album):
 
 
 def band_to_listitem(band):
-    label = "Band: %s" % ("Fake band",)
-    return router.make('home'), xbmcgui.ListItem(label), True
+    label = "Band: %s (%s)" % (band.name, band.type)
+    return router.make('artist', dict(url=band.url)), xbmcgui.ListItem(label, '', band.image, band.image), True
 
 
 def track_to_listitem(track):
@@ -128,7 +130,7 @@ def usercollection(params, parts, route):
 
 @router.route('own-wishlist', R"^/own/wishlist$", expander("/own/wishlist"))
 def ownwishlist(params, parts, route):
-    userwishlist({"username": me}, parts, route)
+    return userwishlist({"username": me}, parts, route)
 
 
 @router.route('user-wishlist', R"^/user/(?P<username>.*?)/wishlist$", expander("/user/{username}/wishlist"))
@@ -154,6 +156,28 @@ def user(params, parts, route):
         (router.make('user-collection', {"username": params["username"]}), xbmcgui.ListItem("collection"), True),
         (router.make('user-wishlist', {"username": params["username"]}), xbmcgui.ListItem("wishlist"), True),
     ]
+
+
+@router.route('artist', R"^/artist$", expander("/artist{?url}"))
+@plghelper.listingAction
+def user(params, parts, route):
+    artist = bc.get_band_by_url(params["url"])
+    ret = [
+        (router.make('artist-albums', dict(url=params.url)), xbmcgui.ListItem("Albums"), True),
+    ]
+    if artist.hasRecomended():
+        ret.append(
+            (router.make('artist-recommeded', dict(url=params.url)), xbmcgui.ListItem("Recommended"), True),
+        )
+    return ret
+
+
+@router.route('artist-albums', R"^/artist-albums$", expander("/artist-albums{?url}"))
+@plghelper.listingAction
+def user(params, parts, route):
+    albums = bc.get_band_music_by_url(params["url"])
+
+    return [album_to_listitem(item) for item in albums if type(item) is bc.Album]
 
 
 print "current path: %s" % current_path

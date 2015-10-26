@@ -2,9 +2,11 @@ __author__ = 'thesebas'
 
 from bs4 import BeautifulSoup
 import urllib2
+from urlparse import urlparse, urlunparse
 from resources.router import expander
 import re
 import json
+from resources.utils import Memoize
 
 collection_url_tpl = expander("https://bandcamp.com/{username}?mvp=p")
 wishlist_url_tpl = expander("https://bandcamp.com/{username}/wishlist?mvp=p")
@@ -13,8 +15,15 @@ search_url_tpl = expander('https://bandcamp.com/search{?q}')
 
 
 class Band(object):
-    def __init__(self):
-        pass
+    def __init__(self, **kwargs):
+        self.name = kwargs.get('name', '')
+        self.url = kwargs.get('url', '')
+        self.image = kwargs.get('image', '')
+        self.type = kwargs.get('type', '')
+        self.recommended_url = False
+
+    def __str__(self):
+        return "<Band name=%s url=%s image=%s>" % (self.name, self.url, self.image)
 
 
 class Album(object):
@@ -47,6 +56,12 @@ class Track(object):
         self.album = album
 
 
+@Memoize
+def load_url(url):
+    res = urllib2.urlopen(url)
+    return res.read()
+
+
 def li_to_album(li):
     cover = li.find('img', class_='collection-item-art')["src"]
     info = li.find('div', class_='collection-item-details-container')
@@ -72,7 +87,13 @@ def itemdetail_to_album(detail):
 
 def li_to_searchresult(li):
     if "band" in li["class"]:
-        return Band()
+        name = li.find('div', class_='result-info').find('div', class_='heading').a.string.strip()
+        artcont = li.find('a', class_='artcont')
+        image = artcont.div.img['src']
+        url_parts = urlparse(artcont['href'])
+        url = urlunparse((url_parts.scheme, url_parts.netloc, '/', '', '', ''))
+        bandtype = li.find('div', class_='result-info').find('div', class_='itemtype').string.strip()
+        return Band(name=name, image=image, url=url, type=bandtype)
     elif "album" in li["class"]:
         url = li.find('a', class_='artcont')["href"]
         title = li.find('div', class_='result-info').find('div', class_='heading').a.string.strip()
@@ -86,8 +107,7 @@ def li_to_searchresult(li):
 
 def get_wishlist(user):
     url = wishlist_url_tpl({"username": user})
-    res = urllib2.urlopen(url)
-    body = res.read()
+    body = load_url(url)
     m = re.search("^\s+item_details: (.*),$", body, re.M)
     if m:
         data = json.loads(m.group(1))
@@ -97,16 +117,14 @@ def get_wishlist(user):
 
 def get_collection(user):
     url = collection_url_tpl({"username": user})
-    res = urllib2.urlopen(url)
-    body = res.read()
+    body = load_url(url)
     soup = BeautifulSoup(body, 'html.parser')
 
     return [li_to_album(li) for li in soup.find_all('li', class_='collection-item-container')]
 
 
 def get_album_tracks(url):
-    res = urllib2.urlopen(url)
-    body = res.read()
+    body = load_url(url)
     m = re.search("trackinfo : (.*),", body, re.M)
     print m
     if m:
@@ -119,9 +137,60 @@ def get_album_tracks(url):
 
 def get_search_results(query):
     print "searching for '%s'" % (query,)
-    res = urllib2.urlopen(search_url_tpl(dict(q=query)))
-    body = res.read()
+    body = load_url(search_url_tpl(dict(q=query)))
 
     soup = BeautifulSoup(body, 'html.parser')
     return [item for item in [li_to_searchresult(li) for li in
                               soup.find('ul', class_='result-items').find_all('li', class_='searchresult')] if item]
+
+
+def get_band_by_url(url):
+    print "get_band_by_url", url
+    body = load_url(url)
+    soup = BeautifulSoup(body, 'html.parser')
+
+    band = Band()
+
+    recommended = soup.find('div', class_='recommended')
+    if recommended:
+        recommended_url = recommended.a['href']
+        band.recommended_url = recommended_url
+
+    return band
+
+
+def get_band_data_by_url(url):
+    body = load_url(url)
+    band_data = re.search("var BandData = ({.*}),\n", body)
+    band_data = json.loads(band_data.group(1))
+
+    return band_data
+
+
+def get_band_music_by_url(url):
+    body = load_url(url)
+    soup = BeautifulSoup(body, 'html.parser')
+
+    data = soup.find('ol', class_='music-grid')['data-initial-values']
+    data = json.loads(data)
+
+    band_data = get_band_data_by_url(url)
+
+    url_parts = urlparse(url)
+    items = []
+    for item in data:
+        if item['type'] == 'album':
+            title = item['title']
+            url = urlunparse((url_parts.scheme, url_parts.netloc, item["page_url"], '', '', ''))
+            cover = albumcover_url_tpl(dict(albumartid=item["art_id"]))
+            album = Album(title=title, url=url, cover=cover)
+            if item['artist']:
+                album.artist = item['artist']
+            else:
+                album.artist = band_data["name"]
+            items.append(album)
+        elif item['type'] == 'track':
+            # todo, later...
+            pass
+
+    return items
