@@ -69,18 +69,29 @@ def track_to_listitem(track):
     return track.stream_url, xbmcgui.ListItem(label), False
 
 
-me = "thesebas"
+me = addon.getSetting('username')
+asked = addon.getSetting('asked')
+
+
+if asked != 'true':
+    addon.openSettings()
+    me = addon.getSetting('username')
+    if not me:
+        addon.setSetting('asked', "true")
+
+
+anon = True if me == "" else False
 
 
 @router.route('home', R"^/$", expander("/"))
 @plghelper.listingAction
 def home(params, parts, route):
     print params, parts, route
-    return [
+    return filter(lambda x: x is not None, [
         (router.make('discover'), xbmcgui.ListItem('discover', 'discover-2'), True),
         (router.make('search'), xbmcgui.ListItem('search', 'search-2'), True),
-        (router.make('user', {"username": me}), xbmcgui.ListItem('user', 'user-2'), True),
-    ]
+        (router.make('user', {"username": me}), xbmcgui.ListItem('user', 'user-2'), True) if not anon else None,
+    ])
 
 
 @router.route('discover', R"^/discover$", expander("/discover"))
@@ -139,6 +150,15 @@ def userwishlist(params, parts, route):
     albums = bc.get_wishlist(params["username"])
     return [album_to_listitem(album) for album in albums]
 
+@router.route('own-following', R"^/own/following", expander("/own/following"))
+def ownfollowing(params, parts, route):
+    return usercollection({"username": me}, parts, route)
+
+@router.route('user-following', R"^/user/(?P<username>.*?)/following", expander("/user/{username}/following"))
+@plghelper.listingAction
+def userfollowing(params, parts, route):
+    bands = bc.get_following(params["username"])
+    return [band_to_listitem(band) for band in bands]
 
 @router.route('album', R"^/album$", expander("/album{?url}"))
 @plghelper.listingAction
@@ -155,27 +175,29 @@ def user(params, parts, route):
     return [
         (router.make('user-collection', {"username": params["username"]}), xbmcgui.ListItem("collection"), True),
         (router.make('user-wishlist', {"username": params["username"]}), xbmcgui.ListItem("wishlist"), True),
+        (router.make('user-following', {"username": params["username"]}), xbmcgui.ListItem("following"), True),
     ]
 
 
 @router.route('artist', R"^/artist$", expander("/artist{?url}"))
 @plghelper.listingAction
-def user(params, parts, route):
-    artist = bc.get_band_by_url(params["url"])
+def artist(params, parts, route):
+    artist = bc.get_band_by_url(urllib.unquote(params["url"][0]))
     ret = [
-        (router.make('artist-albums', dict(url=params.url)), xbmcgui.ListItem("Albums"), True),
+        (router.make('artist-albums', dict(url=params["url"])), xbmcgui.ListItem("Albums"), True),
     ]
-    if artist.hasRecomended():
+    if artist.recommended_url:
         ret.append(
-            (router.make('artist-recommeded', dict(url=params.url)), xbmcgui.ListItem("Recommended"), True),
+            (router.make('artist-recommeded', dict(url=params["url"])), xbmcgui.ListItem("Recommended"), True),
         )
     return ret
 
 
 @router.route('artist-albums', R"^/artist-albums$", expander("/artist-albums{?url}"))
 @plghelper.listingAction
-def user(params, parts, route):
-    albums = bc.get_band_music_by_url(params["url"])
+def artist_albums(params, parts, route):
+    url = urllib.unquote(urllib.unquote(params["url"][0]))
+    albums = bc.get_band_music_by_url(url)
 
     return [album_to_listitem(item) for item in albums if type(item) is bc.Album]
 

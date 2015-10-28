@@ -10,6 +10,7 @@ from resources.utils import Memoize
 
 collection_url_tpl = expander("https://bandcamp.com/{username}?mvp=p")
 wishlist_url_tpl = expander("https://bandcamp.com/{username}/wishlist?mvp=p")
+following_url_tpl = expander("https://bandcamp.com/{username}/following?mvp=p")
 albumcover_url_tpl = expander('https://f1.bcbits.com/img/a{albumartid}_9.jpg')
 search_url_tpl = expander('https://bandcamp.com/search{?q}')
 
@@ -25,6 +26,8 @@ class Band(object):
     def __str__(self):
         return "<Band name=%s url=%s image=%s>" % (self.name, self.url, self.image)
 
+    # def hasRecommended(self):
+    #     return self.recommended_url
 
 class Album(object):
     def __init__(self, **kwargs):
@@ -73,11 +76,21 @@ def li_to_album(li):
     return Album(title=title, artist=artist, cover=cover, url=url)
 
 
+def li_to_band(li):
+    image = li.find('img', class_='lazy')['data-original']
+    info = li.find('div', class_='band-name')
+    name = info.find('a').string
+    url = info.find('a')['href']
+
+    return Band(name=name, url=url, image=image)
+
+
 def tralbumdata_to_trac(data):
     if data["file"] is None:  # not playable files
         return None
-
-    return Track(None, title=data["title"], artist="", track_url="", stream_url=data["file"]["mp3-128"])
+    stream_url_parts = urlparse(data["file"]["mp3-128"])
+    stream_url = urlunparse(("http", stream_url_parts.netloc, stream_url_parts.path, '', stream_url_parts.query, ''))
+    return Track(None, title=data["title"], artist="", track_url="", stream_url=stream_url)
 
 
 def itemdetail_to_album(detail):
@@ -115,6 +128,15 @@ def get_wishlist(user):
     return []
 
 
+def get_following(user):
+    url = following_url_tpl({"username": user})
+    body = load_url(url)
+    soup = BeautifulSoup(body, 'html.parser')
+
+    lis = soup.find(None, id='following-artists-container').find_all('li', class_='follow-grid-item')
+    return [li_to_band(li) for li in lis]
+
+
 def get_collection(user):
     url = collection_url_tpl({"username": user})
     body = load_url(url)
@@ -145,7 +167,10 @@ def get_search_results(query):
 
 
 def get_band_by_url(url):
+    url_parts = urlparse(url, 'http')
+    url = urlunparse((url_parts.scheme, url_parts.netloc, url_parts.path, None, "mvp=p", None))
     print "get_band_by_url", url
+
     body = load_url(url)
     soup = BeautifulSoup(body, 'html.parser')
 
@@ -171,9 +196,19 @@ def get_band_music_by_url(url):
     body = load_url(url)
     soup = BeautifulSoup(body, 'html.parser')
 
-    data = soup.find('ol', class_='music-grid')['data-initial-values']
-    data = json.loads(data)
+    musicgrid = soup.find('ol', class_='music-grid')
+    if musicgrid:
+        return get_band_music_by_url_via_musicgrid(musicgrid, url)
 
+    discography = soup.find('div', id='discography')
+    if discography:
+        return get_band_music_by_url_via_discography(discography, url)
+
+    return []
+
+
+def get_band_music_by_url_via_musicgrid(musicgrid, url):
+    data = json.loads(musicgrid['data-initial-values'])
     band_data = get_band_data_by_url(url)
 
     url_parts = urlparse(url)
@@ -194,3 +229,19 @@ def get_band_music_by_url(url):
             pass
 
     return items
+
+
+def get_band_music_by_url_via_discography(discography, url):
+    lis = discography.find('ul').find_all('li')
+
+    def li2album(li):
+        a = li.find('a', class_='thumbthumb')
+        album_url = a['href']
+        cover = a.find('img')['src']
+        title = li.find('div', class_='trackTitle').find('a').string
+        url_parts = urlparse(url)
+
+        album_url = urlunparse((url_parts.scheme, url_parts.netloc, album_url, None, None, None))
+        return Album(title=title, cover=cover, url=album_url)
+
+    return map(li2album, lis)
