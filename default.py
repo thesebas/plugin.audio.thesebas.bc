@@ -44,7 +44,8 @@ class PluginHelper(object):
             items = func(*args)
             if items is None:
                 print args
-            xbmcplugin.addDirectoryItems(self.handle, items)
+            else:
+                xbmcplugin.addDirectoryItems(self.handle, items)
             xbmcplugin.endOfDirectory(self.handle)
 
         return inner
@@ -68,7 +69,7 @@ def band_to_listitem(band):
 def track_to_listitem(track):
     # return router.make('album', {'url': track.url}), xbmcgui.ListItem(track.title), False
     # label = "Track: %s" % (track.title,)
-    item = xbmcgui.ListItem(label=track.title, thumbnailImage=track.album.cover)
+    item = xbmcgui.ListItem(label=track.title, thumbnailImage=track.album.cover if track.album is not None else None)
     artist_name = track.artist if type(track.artist) is str else track.artist.name
 
     item.setInfo(type='music', infoLabels=dict(Title=track.title, Artist=artist_name))
