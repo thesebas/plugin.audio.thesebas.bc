@@ -4,8 +4,8 @@ import xbmcplugin
 import xbmcgui
 import xbmcaddon
 import xbmc
-from resources.router import Router, expander
-import resources.bc as bc
+from resources.lib.router import Router, expander
+import resources.lib.bc as bc
 import sys
 
 addon = xbmcaddon.Addon()
@@ -54,7 +54,9 @@ plghelper = PluginHelper(handle)
 
 
 def album_to_listitem(album):
-    label = "Album: %s by %s" % (album.title, album.artist)
+    artist_datatype = type(album.artist)
+    artist_name = album.artist if artist_datatype is str or artist_datatype is unicode else album.artist.name
+    label = "Album: %s by %s" % (album.title, artist_name)
     return router.make('album', {'url': album.url}), xbmcgui.ListItem(label, '', album.cover, album.cover), True
 
 
@@ -65,8 +67,12 @@ def band_to_listitem(band):
 
 def track_to_listitem(track):
     # return router.make('album', {'url': track.url}), xbmcgui.ListItem(track.title), False
-    label = "Track: %s" % (track.title,)
-    return track.stream_url, xbmcgui.ListItem(label), False
+    # label = "Track: %s" % (track.title,)
+    item = xbmcgui.ListItem(label=track.title, thumbnailImage=track.album.cover)
+    artist_name = track.artist if type(track.artist) is str else track.artist.name
+
+    item.setInfo(type='music', infoLabels=dict(Title=track.title, Artist=artist_name))
+    return track.stream_url, item, False
 
 
 me = addon.getSetting('username')

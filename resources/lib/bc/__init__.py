@@ -3,10 +3,11 @@ __author__ = 'thesebas'
 from bs4 import BeautifulSoup
 import urllib2
 from urlparse import urlparse, urlunparse
-from resources.router import expander
+from ..router import expander
 import re
 import json
-from resources.utils import Memoize
+import resources.lib.demjson as demjson
+from ..utils import Memoize
 
 collection_url_tpl = expander("https://bandcamp.com/{username}?mvp=p")
 wishlist_url_tpl = expander("https://bandcamp.com/{username}/wishlist?mvp=p")
@@ -26,8 +27,8 @@ class Band(object):
     def __str__(self):
         return "<Band name=%s url=%s image=%s>" % (self.name, self.url, self.image)
 
-    # def hasRecommended(self):
-    #     return self.recommended_url
+        # def hasRecommended(self):
+        #     return self.recommended_url
 
 class Album(object):
     def __init__(self, **kwargs):
@@ -39,8 +40,8 @@ class Album(object):
     def __str__(self):
         return "<Album artist=%s, title=%s, cover=%s, url=%s>" % (self.artist, self.title, self.cover, self.url)
 
-    def __repr__(self):
-        return 'Album(artist="%s", title="%s", cover="%s", url="%s")' % (self.artist, self.title, self.cover, self.url)
+    # def __repr__(self):
+    #     return 'Album(artist="%s", title="%s", cover="%s", url="%s")' % (self.artist, self.title, self.cover, self.url)
 
     @staticmethod
     def unserialize(data):
@@ -58,6 +59,8 @@ class Track(object):
         self.stream_url = kwargs.get("stream_url", '')
         self.album = album
 
+    def __str__(self):
+        return "<Track artist=%s, album=%s, title=%s, track_url=%s>" % (self.artist, self.album, self.title,  self.track_url)
 
 @Memoize
 def load_url(url):
@@ -85,12 +88,12 @@ def li_to_band(li):
     return Band(name=name, url=url, image=image)
 
 
-def tralbumdata_to_trac(data):
+def tralbumdata_to_track(data):
     if data["file"] is None:  # not playable files
         return None
     stream_url_parts = urlparse(data["file"]["mp3-128"])
     stream_url = urlunparse(("http", stream_url_parts.netloc, stream_url_parts.path, '', stream_url_parts.query, ''))
-    return Track(None, title=data["title"], artist="", track_url="", stream_url=stream_url)
+    return Track(None, title=data["title"], artist="", track_url=data["title_link"], stream_url=stream_url)
 
 
 def itemdetail_to_album(detail):
@@ -148,11 +151,20 @@ def get_collection(user):
 def get_album_tracks(url):
     body = load_url(url)
     m = re.search("trackinfo : (.*),", body, re.M)
-    print m
+    #print m
     if m:
         data = json.loads(m.group(1))
-        print data
-        return [track for track in [tralbumdata_to_trac(track) for track in data] if track is not None]
+        #print data
+        m = re.search('artist: "(.*)"', body, re.M)
+        artist = m.group(1)
+        tracks = [track for track in [tralbumdata_to_track(track) for track in data] if track is not None]
+        album = get_album_by_url(url)
+        def fill_data(track):
+            track.artist = artist
+            track.album = album
+            return track
+
+        return map(fill_data, tracks)
 
     return []
 
@@ -165,7 +177,7 @@ def get_search_results(query):
     return [item for item in [li_to_searchresult(li) for li in
                               soup.find('ul', class_='result-items').find_all('li', class_='searchresult')] if item]
 
-
+@Memoize
 def get_band_by_url(url):
     url_parts = urlparse(url, 'http')
     url = urlunparse((url_parts.scheme, url_parts.netloc, url_parts.path, None, "mvp=p", None))
@@ -174,20 +186,48 @@ def get_band_by_url(url):
     body = load_url(url)
     soup = BeautifulSoup(body, 'html.parser')
 
-    band = Band()
+    band_data = get_band_data_by_url(url)
+
+    band = Band(name=band_data["name"], url=url)
 
     recommended = soup.find('div', class_='recommended')
     if recommended:
         recommended_url = recommended.a['href']
         band.recommended_url = recommended_url
 
+    div = soup.find('div', class_='artists-bio-pic')
+    if div:
+        band.image = div.find('a', class_='popupImage')['href']
+
     return band
 
 
+@Memoize
+def get_album_data_by_url(url):
+    body = load_url(url)
+    m = re.search("var TralbumData = .*?current: ({.*}),\n.*?(is_preorder.*?)trackinfo ?:", body, re.S)
+    data = json.loads(m.group(1))
+
+    data.update(demjson.decode("{%s}" % (m.group(2),)))
+
+    return data
+
+
+@Memoize
+def get_album_by_url(url):
+    album_data = get_album_data_by_url(url)
+
+    album = Album(title=album_data['title'], cover=album_data["artFullsizeUrl"])
+
+    return album
+
+
+@Memoize
 def get_band_data_by_url(url):
     body = load_url(url)
-    band_data = re.search("var BandData = ({.*}),\n", body)
-    band_data = json.loads(band_data.group(1))
+    band_data = re.search("var BandData = ({.*?})[,;]\n", body, re.S)
+
+    band_data = demjson.decode(band_data.group(1))
 
     return band_data
 
@@ -234,6 +274,8 @@ def get_band_music_by_url_via_musicgrid(musicgrid, url):
 def get_band_music_by_url_via_discography(discography, url):
     lis = discography.find('ul').find_all('li')
 
+    band = get_band_by_url(url)
+
     def li2album(li):
         a = li.find('a', class_='thumbthumb')
         album_url = a['href']
@@ -242,6 +284,6 @@ def get_band_music_by_url_via_discography(discography, url):
         url_parts = urlparse(url)
 
         album_url = urlunparse((url_parts.scheme, url_parts.netloc, album_url, None, None, None))
-        return Album(title=title, cover=cover, url=album_url)
+        return Album(title=title, cover=cover, url=album_url, artist=band)
 
     return map(li2album, lis)
