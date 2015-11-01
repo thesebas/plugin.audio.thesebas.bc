@@ -7,7 +7,7 @@ from ..router import expander
 import re
 import json
 import resources.lib.demjson as demjson
-from ..utils import Memoize
+from ..utils import Memoize, MeasureTime
 
 collection_url_tpl = expander("https://bandcamp.com/{username}?mvp=p")
 wishlist_url_tpl = expander("https://bandcamp.com/{username}/wishlist?mvp=p")
@@ -62,12 +62,15 @@ class Track(object):
     def __str__(self):
         return "<Track artist=%s, album=%s, title=%s, track_url=%s>" % (self.artist, self.album, self.title,  self.track_url)
 
+
+@MeasureTime
 @Memoize
 def load_url(url):
     res = urllib2.urlopen(url)
     return res.read()
 
 
+@MeasureTime
 def li_to_album(li):
     cover = li.find('img', class_='collection-item-art')["src"]
     info = li.find('div', class_='collection-item-details-container')
@@ -79,6 +82,7 @@ def li_to_album(li):
     return Album(title=title, artist=artist, cover=cover, url=url)
 
 
+@MeasureTime
 def li_to_band(li):
     image = li.find('img', class_='lazy')['data-original']
     info = li.find('div', class_='band-name')
@@ -88,6 +92,7 @@ def li_to_band(li):
     return Band(name=name, url=url, image=image)
 
 
+@MeasureTime
 def tralbumdata_to_track(data):
     if data["file"] is None:  # not playable files
         return None
@@ -96,11 +101,13 @@ def tralbumdata_to_track(data):
     return Track(None, title=data["title"], artist="", track_url=data["title_link"], stream_url=stream_url)
 
 
+@MeasureTime
 def itemdetail_to_album(detail):
     return Album(url=detail["item_url"], artist=detail["band_name"], title=detail["item_title"],
                  cover=albumcover_url_tpl({"albumartid": detail["item_art_id"]}))
 
 
+@MeasureTime
 def li_to_searchresult(li):
     if "band" in li["class"]:
         name = li.find('div', class_='result-info').find('div', class_='heading').a.string.strip()
@@ -121,6 +128,7 @@ def li_to_searchresult(li):
     return None
 
 
+@MeasureTime
 def get_wishlist(user):
     url = wishlist_url_tpl({"username": user})
     body = load_url(url)
@@ -131,6 +139,7 @@ def get_wishlist(user):
     return []
 
 
+@MeasureTime
 def get_following(user):
     url = following_url_tpl({"username": user})
     body = load_url(url)
@@ -140,6 +149,7 @@ def get_following(user):
     return [li_to_band(li) for li in lis]
 
 
+@MeasureTime
 def get_collection(user):
     url = collection_url_tpl({"username": user})
     body = load_url(url)
@@ -148,6 +158,7 @@ def get_collection(user):
     return [li_to_album(li) for li in soup.find_all('li', class_='collection-item-container')]
 
 
+@MeasureTime
 def get_album_tracks(url):
     body = load_url(url)
     m = re.search("trackinfo : (.*),", body, re.M)
@@ -169,6 +180,7 @@ def get_album_tracks(url):
     return []
 
 
+@MeasureTime
 def get_search_results(query):
     print "searching for '%s'" % (query,)
     body = load_url(search_url_tpl(dict(q=query)))
@@ -177,6 +189,8 @@ def get_search_results(query):
     return [item for item in [li_to_searchresult(li) for li in
                               soup.find('ul', class_='result-items').find_all('li', class_='searchresult')] if item]
 
+
+@MeasureTime
 @Memoize
 def get_band_by_url(url):
     url_parts = urlparse(url, 'http')
@@ -202,6 +216,7 @@ def get_band_by_url(url):
     return band
 
 
+@MeasureTime
 @Memoize
 def get_album_data_by_url(url):
     body = load_url(url)
@@ -213,6 +228,7 @@ def get_album_data_by_url(url):
     return data
 
 
+@MeasureTime
 @Memoize
 def get_album_by_url(url):
     album_data = get_album_data_by_url(url)
@@ -222,6 +238,7 @@ def get_album_by_url(url):
     return album
 
 
+@MeasureTime
 @Memoize
 def get_band_data_by_url(url):
     body = load_url(url)
@@ -232,6 +249,7 @@ def get_band_data_by_url(url):
     return band_data
 
 
+@MeasureTime
 def get_band_music_by_url(url):
     body = load_url(url)
     soup = BeautifulSoup(body, 'html.parser')
@@ -247,6 +265,7 @@ def get_band_music_by_url(url):
     return []
 
 
+@MeasureTime
 def get_band_music_by_url_via_musicgrid(musicgrid, url):
     data = json.loads(musicgrid['data-initial-values'])
     band_data = get_band_data_by_url(url)
@@ -271,6 +290,7 @@ def get_band_music_by_url_via_musicgrid(musicgrid, url):
     return items
 
 
+@MeasureTime
 def get_band_music_by_url_via_discography(discography, url):
     lis = discography.find('ul').find_all('li')
 

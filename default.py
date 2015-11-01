@@ -75,16 +75,17 @@ def track_to_listitem(track):
     item.setInfo(type='music', infoLabels=dict(Title=track.title, Artist=artist_name))
     return track.stream_url, item, False
 
+settings_username = 'username'
+settings_firstrun = 'firstrun'
 
-me = addon.getSetting('username')
-asked = addon.getSetting('asked')
+me = addon.getSetting(settings_username)
+firstrun = addon.getSetting(settings_firstrun)
 
 
-if asked != 'true':
+if me == '' and firstrun == 'true':
+    addon.setSetting(settings_firstrun, "false")
     addon.openSettings()
-    me = addon.getSetting('username')
-    if not me:
-        addon.setSetting('asked', "true")
+    me = addon.getSetting(settings_username)
 
 
 anon = True if me == "" else False
