@@ -174,6 +174,7 @@ def albumlist(params, parts, route):
     album_url = urllib.unquote(params["url"][0])
     print "getting album: %s" % album_url
     tracks = bc.get_album_tracks(album_url)
+    print tracks
     return [track_to_listitem(track) for track in tracks]
 
 

@@ -161,11 +161,11 @@ def get_collection(user):
 @MeasureTime
 def get_album_tracks(url):
     body = load_url(url)
-    m = re.search("trackinfo : (.*),", body, re.M)
-    #print m
+    m = re.search("trackinfo: (.*),", body, re.M)
+    print "trackinfo body", m
     if m:
         data = json.loads(m.group(1))
-        #print data
+        print "parsed data", data
         m = re.search('artist: "(.*)"', body, re.M)
         artist = m.group(1)
         tracks = [track for track in [tralbumdata_to_track(track) for track in data] if track is not None]
@@ -233,9 +233,11 @@ def get_album_data_by_url(url):
 def get_album_by_url(url):
     album_data = get_album_data_by_url(url)
 
-    album = Album(title=album_data['title'], cover=album_data["artFullsizeUrl"])
-
-    return album
+    try:
+        return Album(title=album_data['title'], cover=album_data["artFullsizeUrl"])
+    except KeyError as e:
+        print e.message
+        return Album(title=album_data['title'])
 
 
 @MeasureTime
