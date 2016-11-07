@@ -7,6 +7,7 @@ import xbmc
 from resources.lib.router import Router, expander
 import resources.lib.bc as bc
 import sys
+from resources.lib.utils import Memoize
 
 addon = xbmcaddon.Addon()
 language = addon.getLocalizedString
@@ -64,6 +65,11 @@ def album_to_listitem(album):
 def band_to_listitem(band):
     label = "Band: %s (%s)" % (band.name, band.type)
     return router.make('artist', dict(url=band.url)), xbmcgui.ListItem(label, '', band.image, band.image), True
+
+
+def fan_to_listitem(fan):
+    label = "Fan: %s" % (fan.name,)
+    return router.make("user", dict(url=fan.url)), xbmcgui.ListItem(label, '', fan.image, fan.image), True
 
 
 def track_to_listitem(track):
@@ -158,15 +164,18 @@ def userwishlist(params, parts, route):
     albums = bc.get_wishlist(params["username"])
     return [album_to_listitem(album) for album in albums]
 
+
 @router.route('own-following', R"^/own/following", expander("/own/following"))
 def ownfollowing(params, parts, route):
     return usercollection({"username": me}, parts, route)
 
+
 @router.route('user-following', R"^/user/(?P<username>.*?)/following", expander("/user/{username}/following"))
 @plghelper.listingAction
 def userfollowing(params, parts, route):
-    bands = bc.get_following(params["username"])
-    return [band_to_listitem(band) for band in bands]
+    bands, fans = bc.get_following(params["username"])
+    return [band_to_listitem(band) for band in bands] + [fan_to_listitem(fan) for fan in fans]
+
 
 @router.route('album', R"^/album$", expander("/album{?url}"))
 @plghelper.listingAction

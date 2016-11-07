@@ -7,7 +7,7 @@ from ..router import expander
 import re
 import json
 import resources.lib.demjson as demjson
-from ..utils import Memoize, MeasureTime
+from ..utils import MeasureTime
 
 collection_url_tpl = expander("https://bandcamp.com/{username}?mvp=p")
 wishlist_url_tpl = expander("https://bandcamp.com/{username}/wishlist?mvp=p")
@@ -29,6 +29,7 @@ class Band(object):
 
         # def hasRecommended(self):
         #     return self.recommended_url
+
 
 class Album(object):
     def __init__(self, **kwargs):
@@ -63,8 +64,17 @@ class Track(object):
         return "<Track artist=%s, album=%s, title=%s, track_url=%s>" % (self.artist, self.album, self.title,  self.track_url)
 
 
+class Fan(object):
+    def __init__(self, **kwargs):
+        self.name = kwargs.get("name", "")
+        self.url = kwargs.get("url", collection_url_tpl({"username": self.name}))
+        self.image = kwargs.get("image", "")
+
+    def __str__(self):
+        return "<Fan name=%s url=%s image=%s>" % (self.name, self.url, self.image)
+
+
 @MeasureTime
-@Memoize
 def load_url(url):
     res = urllib2.urlopen(url)
     return res.read()
@@ -90,6 +100,15 @@ def li_to_band(li):
     url = info.find('a')['href']
 
     return Band(name=name, url=url, image=image)
+
+
+def li_to_fan(li):
+    image = li.find('img', class_='lazy')['data-original']
+    info = li.find('div', class_='fan-name')
+    name = info.find('a').string
+    url = info.find('a')['href']
+
+    return Fan(name=name, image=image, url=url)
 
 
 @MeasureTime
@@ -145,8 +164,13 @@ def get_following(user):
     body = load_url(url)
     soup = BeautifulSoup(body, 'html.parser')
 
-    lis = soup.find(None, id='following-artists-container').find_all('li', class_='follow-grid-item')
-    return [li_to_band(li) for li in lis]
+    bands_lis = soup.find(None, id='following-artists-container').find_all('li', class_='follow-grid-item')
+    fans_lis = soup.find(None, id='following-fans-container').find_all('li', class_='follow-grid-item')
+
+    bands = [li_to_band(li) for li in bands_lis]
+    fans = [li_to_fan(li) for li in fans_lis]
+
+    return bands, fans
 
 
 @MeasureTime
@@ -191,7 +215,6 @@ def get_search_results(query):
 
 
 @MeasureTime
-@Memoize
 def get_band_by_url(url):
     url_parts = urlparse(url, 'http')
     url = urlunparse((url_parts.scheme, url_parts.netloc, url_parts.path, None, "mvp=p", None))
@@ -217,7 +240,6 @@ def get_band_by_url(url):
 
 
 @MeasureTime
-@Memoize
 def get_album_data_by_url(url):
     body = load_url(url)
     m = re.search("var TralbumData = .*?current: ({.*}),\n.*?(is_preorder.*?)trackinfo ?:", body, re.S)
@@ -229,7 +251,6 @@ def get_album_data_by_url(url):
 
 
 @MeasureTime
-@Memoize
 def get_album_by_url(url):
     album_data = get_album_data_by_url(url)
 
@@ -241,7 +262,6 @@ def get_album_by_url(url):
 
 
 @MeasureTime
-@Memoize
 def get_band_data_by_url(url):
     body = load_url(url)
     band_data = re.search("var BandData = ({.*?})[,;]\n", body, re.S)
