@@ -1,5 +1,7 @@
-__author__ = 'thesebas'
 import time
+
+__author__ = 'thesebas'
+
 
 class Memoize:
     def __init__(self, func):
@@ -23,7 +25,7 @@ class MeasureTime:
         self.func = func
 
     def __call__(self, *args):
-        print "MeasureTime: %s start" % (self.func.func_name, )
+        print "MeasureTime: %s start" % (self.func.func_name,)
         start = time.time()
         result = self.func(*args)
         print "MeasureTime: %s end: %f" % (self.func.func_name, time.time() - start)
